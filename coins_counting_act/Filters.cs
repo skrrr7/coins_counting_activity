@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 
@@ -373,8 +374,131 @@ namespace ImageProcess2
 
 			return true;
 		}
+        public static Bitmap ApplyThreshold(Bitmap grayImage, int threshold)
+        {
+            Bitmap binaryImage = new Bitmap(grayImage.Width, grayImage.Height, PixelFormat.Format24bppRgb);
+            BitmapData grayData = grayImage.LockBits(
+                new Rectangle(0, 0, grayImage.Width, grayImage.Height),
+                ImageLockMode.ReadOnly,
+                PixelFormat.Format24bppRgb
+            );
 
-		public static bool Smooth(Bitmap b, int nWeight /* default to 1 */)
+            BitmapData binaryData = binaryImage.LockBits(
+                new Rectangle(0, 0, binaryImage.Width, binaryImage.Height),
+                ImageLockMode.WriteOnly,
+                PixelFormat.Format24bppRgb
+            );
+
+            unsafe
+            {
+                byte* grayPtr = (byte*)grayData.Scan0;
+                byte* binaryPtr = (byte*)binaryData.Scan0;
+
+                for (int y = 0; y < grayImage.Height; y++)
+                {
+                    for (int x = 0; x < grayImage.Width; x++)
+                    {
+                        int index = (y * grayData.Stride) + (x * 3);
+                        byte intensity = grayPtr[index];
+
+                        
+                        byte value = (byte)(intensity < threshold ? 0 : 255); 
+
+                        
+                        binaryPtr[index] = value;      
+                        binaryPtr[index + 1] = value;  
+                        binaryPtr[index + 2] = value;  
+                    }
+                }
+            }
+
+            grayImage.UnlockBits(grayData);
+            binaryImage.UnlockBits(binaryData);
+
+            return binaryImage;
+        }
+
+        public static int CountCoins(Bitmap binaryImage)
+        {
+            int coinCount = 0;
+            BitmapData binaryData = binaryImage.LockBits(
+                new Rectangle(0, 0, binaryImage.Width, binaryImage.Height),
+                ImageLockMode.ReadOnly,
+                PixelFormat.Format24bppRgb
+            );
+
+            unsafe
+            {
+                byte* binaryPtr = (byte*)binaryData.Scan0;
+                bool[,] visited = new bool[binaryImage.Height, binaryImage.Width];
+
+                // Direction vectors for 8-connected pixels (up, down, left, right, and diagonals)
+                int[] dx = { -1, 1, 0, 0, -1, 1, -1, 1 };
+                int[] dy = { 0, 0, -1, 1, -1, -1, 1, 1 };
+
+                void bfs(int x, int y)
+                {
+                    // Queue for BFS traversal
+                    Queue<Point> queue = new Queue<Point>();
+                    queue.Enqueue(new Point(x, y));
+
+                    while (queue.Count > 0)
+                    {
+                        Point current = queue.Dequeue();
+                        int cx = current.X, cy = current.Y;
+
+                        // If already visited, skip
+                        if (visited[cy, cx]) continue;
+                        visited[cy, cx] = true;
+
+                        // Check all 8 possible neighbors
+                        for (int i = 0; i < 8; i++)
+                        {
+                            int nx = cx + dx[i];
+                            int ny = cy + dy[i];
+
+                            if (nx >= 0 && ny >= 0 && nx < binaryImage.Width && ny < binaryImage.Height)
+                            {
+                                int index = (ny * binaryData.Stride) + (nx * 3);
+                                byte pixelValue = binaryPtr[index];
+
+                                // If it's black (coin part) and not visited, add to queue
+                                if (pixelValue == 0 && !visited[ny, nx])
+                                {
+                                    queue.Enqueue(new Point(nx, ny));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Iterate through all pixels in the image
+                for (int y = 0; y < binaryImage.Height; y++)
+                {
+                    for (int x = 0; x < binaryImage.Width; x++)
+                    {
+                        int index = (y * binaryData.Stride) + (x * 3);
+                        byte pixelValue = binaryPtr[index];
+
+                        // If the pixel is black (coin) and has not been visited, start a BFS to mark the coin
+                        if (pixelValue == 0 && !visited[y, x])
+                        {
+                            bfs(x, y); // Mark the entire connected component (coin)
+                            coinCount++; // Increment coin count
+                        }
+                    }
+                }
+            }
+
+            // Unlock the binary image bits
+            binaryImage.UnlockBits(binaryData);
+
+            return coinCount;
+        }
+
+
+
+        public static bool Smooth(Bitmap b, int nWeight /* default to 1 */)
 		{
 			ConvMatrix m = new ConvMatrix();
 			m.SetAll(1);
